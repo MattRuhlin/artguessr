@@ -49,7 +49,8 @@ export async function POST(request: NextRequest) {
           artist: object.artistDisplayName || 'Unknown Artist',
           year: object.objectDate || 'Unknown Date',
           country: object.country,
-          locationDescription: object.country // Just show the country
+          locationDescription: object.country, // Just show the country
+          medium: (object.medium || '').trim() || undefined
         };
         
         targetData = { target, object: reconstructedObject };

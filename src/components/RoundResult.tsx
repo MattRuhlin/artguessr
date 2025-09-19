@@ -8,6 +8,7 @@ interface GameObject {
   year: string;
   country: string;
   locationDescription: string;
+  medium?: string;
 }
 
 interface RoundResultProps {

@@ -14,7 +14,8 @@ export async function GET() {
       artist: gameObject.artist,
       year: gameObject.year,
       country: gameObject.country,
-      locationDescription: gameObject.locationDescription
+      locationDescription: gameObject.locationDescription,
+      medium: gameObject.medium
     });
     
     return NextResponse.json(gameObject);

@@ -28,6 +28,7 @@ export interface GameObject {
   country: string;
   locationDescription: string; // Human-readable location (e.g., "France" or "United States")
   target: LatLng;
+  medium?: string;
 }
 
 // In-memory cache for object IDs
@@ -38,6 +39,41 @@ const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 // Cache for successful game objects to avoid re-fetching
 const gameObjectCache = new Map<number, GameObject>();
 const CACHE_SIZE_LIMIT = 100; // Limit cache size to prevent memory issues
+
+// Global rate limiter to ensure we never exceed 80 requests/second to MET API
+const RATE_LIMIT_RPS = 80;
+let availableTokens = RATE_LIMIT_RPS;
+const pendingQueue: Array<() => void> = [];
+
+function drainQueue() {
+  while (availableTokens > 0 && pendingQueue.length > 0) {
+    const run = pendingQueue.shift()!;
+    availableTokens--;
+    run();
+  }
+}
+
+setInterval(() => {
+  availableTokens = RATE_LIMIT_RPS;
+  drainQueue();
+}, 1000);
+
+function scheduleRateLimited<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      Promise.resolve()
+        .then(task)
+        .then(resolve)
+        .catch(reject);
+    };
+    if (availableTokens > 0) {
+      availableTokens--;
+      run();
+    } else {
+      pendingQueue.push(run);
+    }
+  });
+}
 
 // Fallback sample artworks when API is unavailable
 const FALLBACK_ARTWORKS: GameObject[] = [
@@ -98,8 +134,8 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-      
-      const response = await fetch(url, {
+
+      const doFetch = () => fetch(url, {
         ...options,
         signal: controller.signal,
         headers: {
@@ -108,7 +144,11 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
           ...options.headers
         }
       });
-      
+
+      const response = url.startsWith(MET_API_BASE)
+        ? await scheduleRateLimited(() => doFetch())
+        : await doFetch();
+
       clearTimeout(timeoutId);
       
       // If we get a 502, 503, or 504, retry with exponential backoff
@@ -134,6 +174,95 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
   throw new Error('Max retries exceeded');
 }
 
+// ------------------------------
+// Dynamic fallback pool builder
+// ------------------------------
+let fallbackPool: GameObject[] = [];
+let fallbackPoolLastBuilt = 0;
+let fallbackBuildPromise: Promise<void> | null = null;
+const FALLBACK_POOL_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+async function buildFallbackPool(minSize = 500): Promise<void> {
+  const queries = ['a', 'e', 'i', 'o', 'u', 'the', 'of', 'and', 'art', 'painting', 'sculpture', 'ceramic', 'print', 'textile', 'metal'];
+  const objectIdSet = new Set<number>();
+
+  for (const q of queries) {
+    try {
+      const response = await fetchWithRetry(`${MET_API_BASE}/search?hasImages=true&q=${encodeURIComponent(q)}`);
+      if (!response.ok) continue;
+      const data = await response.json();
+      const ids: number[] = data.objectIDs || [];
+      for (const id of ids) {
+        objectIdSet.add(id);
+        if (objectIdSet.size >= minSize * 10) break; // cap to avoid too many
+      }
+      if (objectIdSet.size >= minSize * 10) break;
+    } catch (err) {
+      console.warn('Search query failed while building fallback pool:', err);
+    }
+  }
+
+  const allIds = Array.from(objectIdSet);
+  // Shuffle
+  for (let i = allIds.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allIds[i], allIds[j]] = [allIds[j], allIds[i]];
+  }
+
+  const results: GameObject[] = [];
+
+  for (const objectId of allIds) {
+    if (results.length >= minSize) break;
+    try {
+      const object = await fetchObject(objectId);
+      if (!object.isPublicDomain) continue;
+      const imageUrl = object.primaryImageSmall || object.primaryImage;
+      if (!imageUrl) continue;
+      if (!object.country || object.country.trim() === '') continue;
+
+      const target = getCountryCentroid(object.country);
+      if (!target) continue;
+
+      results.push({
+        objectId: object.objectID,
+        imageUrl,
+        title: object.title || 'Untitled',
+        artist: object.artistDisplayName || 'Unknown Artist',
+        year: object.objectDate || 'Unknown Date',
+        country: object.country,
+        locationDescription: object.country,
+        target,
+        medium: (object.medium || '').trim() || undefined
+      });
+    } catch (err) {
+      // ignore individual failures
+    }
+  }
+
+  if (results.length > 0) {
+    fallbackPool = results;
+    fallbackPoolLastBuilt = Date.now();
+    console.log(`Built fallback pool with ${fallbackPool.length} objects`);
+  } else {
+    console.warn('Failed to build fallback pool; keeping existing pool');
+  }
+}
+
+async function ensureFallbackPool(): Promise<void> {
+  const fresh = (Date.now() - fallbackPoolLastBuilt) < FALLBACK_POOL_TTL && fallbackPool.length > 0;
+  if (fresh) return;
+  if (!fallbackBuildPromise) {
+    fallbackBuildPromise = buildFallbackPool().finally(() => {
+      fallbackBuildPromise = null;
+    });
+  }
+  try {
+    await fallbackBuildPromise;
+  } catch {
+    // ignore; will rely on small static fallback
+  }
+}
+
 export async function fetchObjectIds(): Promise<number[]> {
   const now = Date.now();
   
@@ -142,7 +271,7 @@ export async function fetchObjectIds(): Promise<number[]> {
   }
   
   try {
-    const response = await fetchWithRetry(`${MET_API_BASE}/search?hasImages=true&isOnView=true`);
+    const response = await fetchWithRetry(`${MET_API_BASE}/search?hasImages=true&q=a`);
     
     if (!response.ok) {
       console.log('Response object:', response);
@@ -180,6 +309,9 @@ export async function getRandomGameObject(): Promise<GameObject> {
   console.log('Starting getRandomGameObject...');
   
   try {
+    // Build or refresh fallback pool in the background (non-blocking)
+    ensureFallbackPool().catch(() => {});
+
     // Get random object IDs from the API
     const objectIds = await fetchObjectIds();
     const maxAttempts = 10;
@@ -237,7 +369,8 @@ export async function getRandomGameObject(): Promise<GameObject> {
           year: object.objectDate || 'Unknown Date',
           country: object.country,
           locationDescription: object.country, // Just show the country
-          target: target
+          target: target,
+          medium: (object.medium || '').trim() || undefined
         };
         
         // Cache the successful object
@@ -255,8 +388,18 @@ export async function getRandomGameObject(): Promise<GameObject> {
   } catch (error) {
     console.error('Error in getRandomGameObject:', error);
     
-    // If the API is completely unavailable, use fallback artworks
-    console.log('API unavailable, using fallback artworks');
+    // If the API is unavailable or no valid objects found, use dynamic fallback pool first
+    try {
+      await ensureFallbackPool();
+      if (fallbackPool.length > 0) {
+        const randomFallback = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
+        console.log(`Using dynamic fallback artwork: ${randomFallback.title}`);
+        return randomFallback;
+      }
+    } catch {}
+
+    // As a last resort, use tiny static list
+    console.log('Dynamic fallback unavailable, using tiny static fallback artworks');
     const randomFallback = FALLBACK_ARTWORKS[Math.floor(Math.random() * FALLBACK_ARTWORKS.length)];
     console.log(`Using fallback artwork: ${randomFallback.title}`);
     return randomFallback;
