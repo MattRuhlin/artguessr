@@ -1,4 +1,5 @@
 import { getCountryCentroid, LatLng } from './location';
+import { MET_FALLBACK_GAME_OBJECTS } from '@/data/met-fallback';
 
 const MET_API_BASE = 'https://collectionapi.metmuseum.org/public/collection/v1';
 
@@ -75,8 +76,9 @@ function scheduleRateLimited<T>(task: () => Promise<T>): Promise<T> {
   });
 }
 
-// Fallback sample artworks when API is unavailable
-const FALLBACK_ARTWORKS: GameObject[] = [
+// Legacy tiny static fallback removed in favor of larger generated fallback list.
+// We still keep an ultra-tiny emergency list below as a last resort.
+const EMERGENCY_FALLBACK_ARTWORKS: GameObject[] = [
   {
     objectId: 1001,
     imageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/DT1567.jpg',
@@ -86,46 +88,6 @@ const FALLBACK_ARTWORKS: GameObject[] = [
     country: 'Netherlands',
     locationDescription: 'Netherlands',
     target: getCountryCentroid('Netherlands')!
-  },
-  {
-    objectId: 1002,
-    imageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/DT47.jpg',
-    title: 'Self-Portrait',
-    artist: 'Vincent van Gogh',
-    year: '1889',
-    country: 'Netherlands',
-    locationDescription: 'Netherlands',
-    target: getCountryCentroid('Netherlands')!
-  },
-  {
-    objectId: 1003,
-    imageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/DT1567.jpg',
-    title: 'The Great Wave off Kanagawa',
-    artist: 'Katsushika Hokusai',
-    year: '1830-1832',
-    country: 'Japan',
-    locationDescription: 'Japan',
-    target: getCountryCentroid('Japan')!
-  },
-  {
-    objectId: 1004,
-    imageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/DT47.jpg',
-    title: 'The Birth of Venus',
-    artist: 'Sandro Botticelli',
-    year: '1485-1486',
-    country: 'Italy',
-    locationDescription: 'Italy',
-    target: getCountryCentroid('Italy')!
-  },
-  {
-    objectId: 1005,
-    imageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/DT1567.jpg',
-    title: 'The Persistence of Memory',
-    artist: 'Salvador Dalí',
-    year: '1931',
-    country: 'Spain',
-    locationDescription: 'Spain',
-    target: getCountryCentroid('Spain')!
   }
 ];
 
@@ -388,7 +350,16 @@ export async function getRandomGameObject(): Promise<GameObject> {
   } catch (error) {
     console.error('Error in getRandomGameObject:', error);
     
-    // If the API is unavailable or no valid objects found, use dynamic fallback pool first
+    // If the API is unavailable or no valid objects found, use large static generated list first
+    try {
+      if (MET_FALLBACK_GAME_OBJECTS.length > 0) {
+        const randomFallback = MET_FALLBACK_GAME_OBJECTS[Math.floor(Math.random() * MET_FALLBACK_GAME_OBJECTS.length)];
+        console.log(`Using dynamic fallback artwork: ${randomFallback.title}`);
+        return randomFallback;
+      }
+    } catch {}
+
+    // Then try dynamic pool if available
     try {
       await ensureFallbackPool();
       if (fallbackPool.length > 0) {
@@ -398,9 +369,9 @@ export async function getRandomGameObject(): Promise<GameObject> {
       }
     } catch {}
 
-    // As a last resort, use tiny static list
-    console.log('Dynamic fallback unavailable, using tiny static fallback artworks');
-    const randomFallback = FALLBACK_ARTWORKS[Math.floor(Math.random() * FALLBACK_ARTWORKS.length)];
+    // As a last resort, use ultra-tiny emergency list
+    console.log('Fallback pools unavailable, using emergency static fallback artworks');
+    const randomFallback = EMERGENCY_FALLBACK_ARTWORKS[Math.floor(Math.random() * EMERGENCY_FALLBACK_ARTWORKS.length)];
     console.log(`Using fallback artwork: ${randomFallback.title}`);
     return randomFallback;
   }
