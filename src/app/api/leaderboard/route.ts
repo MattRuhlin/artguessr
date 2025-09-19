@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 export async function GET() {
   try {
-    // Get top 10 scores from KV store
-    const scores = await kv.zrange('leaderboard', 0, 9, { withScores: true, rev: true });
-    
-    const leaderboard = scores.map((item: unknown) => {
-      const [name, score] = item as [string, number];
-      return {
-        name: name as string,
-        score: score as number
-      };
+    // Get top 10 scores from Redis sorted set (highest first)
+    const scores = (await redis.zrange('leaderboard', 0, 9, { withScores: true, rev: true })) as Array<
+      [string, number] | { member: string; score: number }
+    >;
+
+    const leaderboard = scores.map((item: [string, number] | { member: string; score: number }) => {
+      if (Array.isArray(item)) {
+        const [name, score] = item;
+        return { name, score: Number(score) };
+      }
+      return { name: String(item.member), score: Number(item.score) };
     });
     
     return NextResponse.json({ scores: leaderboard });
@@ -46,10 +53,10 @@ export async function POST(request: NextRequest) {
     }
     
     // Add to leaderboard (using score as the score for sorting)
-    await kv.zadd('leaderboard', { score, member: sanitizedName });
+    await redis.zadd('leaderboard', { score, member: sanitizedName });
     
     // Keep only top 10
-    await kv.zremrangebyrank('leaderboard', 0, -11);
+    await redis.zremrangebyrank('leaderboard', 0, -11);
     
     return NextResponse.json({ ok: true });
   } catch (error) {

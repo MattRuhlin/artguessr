@@ -19,7 +19,7 @@ Built with Cursor <3
 - **Styling**: Tailwind CSS
 - **Maps**: Leaflet with OpenStreetMap tiles
 - **Data**: The Met Museum Collection API
-- **Database**: Vercel KV for leaderboard storage
+- **Database**: Serverless Redis (Upstash) for leaderboard storage
 - **Deployment**: Vercel
 
 ## API Endpoints
@@ -45,7 +45,7 @@ Built with Cursor <3
 
 ## Deployment
 
-This app is designed to be deployed on Vercel. Make sure to set up Vercel KV for the leaderboard functionality.
+This app is designed to be deployed on Vercel. Make sure to set up the “Serverless Redis” (Upstash) integration and provide `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
 
 ## Data Sources
 
