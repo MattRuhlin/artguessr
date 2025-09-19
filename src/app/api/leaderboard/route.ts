@@ -6,10 +6,13 @@ export async function GET() {
     // Get top 10 scores from KV store
     const scores = await kv.zrange('leaderboard', 0, 9, { withScores: true, rev: true });
     
-    const leaderboard = scores.map(([name, score]) => ({
-      name: name as string,
-      score: score as number
-    }));
+    const leaderboard = scores.map((item: unknown) => {
+      const [name, score] = item as [string, number];
+      return {
+        name: name as string,
+        score: score as number
+      };
+    });
     
     return NextResponse.json({ scores: leaderboard });
   } catch (error) {

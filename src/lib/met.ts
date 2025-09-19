@@ -39,7 +39,6 @@ const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 // Cache for successful game objects to avoid re-fetching
 const gameObjectCache = new Map<number, GameObject>();
-const CACHE_SIZE_LIMIT = 100; // Limit cache size to prevent memory issues
 
 // Global rate limiter to ensure we never exceed 50 requests/second to MET API
 const RATE_LIMIT_RPS = 50;

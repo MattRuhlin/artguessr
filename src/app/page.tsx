@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import Leaderboard from '@/components/Leaderboard';
 
 export default function Home() {
@@ -30,9 +31,11 @@ export default function Home() {
           <div className="flex items-center justify-center space-x-8 mb-8">
             {/* Left spooky frame */}
             <div className="w-32 h-32 spooky-frame spooky-float spooky-glow hidden lg:block">
-              <img 
+              <Image 
                 src="/spooky/Saturn-Francisco-de-Goya-Museo-del-Prado-Madrid.webp" 
                 alt="Saturn Devouring His Son" 
+                width={128}
+                height={128}
                 className="w-full h-full object-cover"
               />
             </div>
@@ -57,9 +60,11 @@ export default function Home() {
             
             {/* Right spooky frame */}
             <div className="w-32 h-32 spooky-frame spooky-float spooky-glow hidden lg:block" style={{ animationDelay: '1s' }}>
-              <img 
+              <Image 
                 src="/spooky/goya.webp" 
                 alt="Goya Artwork" 
+                width={128}
+                height={128}
                 className="w-full h-full object-cover"
               />
             </div>

@@ -2,7 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { haversineKm, roundScore } from '@/lib/scoring';
 
 // In-memory store for current round targets
-const currentTargets = new Map<number, { target: { lat: number; lng: number }; object: any }>();
+interface GameObject {
+  objectId: number;
+  imageUrl: string;
+  title: string;
+  artist: string;
+  year: string;
+  country: string;
+  locationDescription: string;
+  medium?: string;
+}
+
+const currentTargets = new Map<number, { target: { lat: number; lng: number }; object: GameObject }>();
 
 export async function POST(request: NextRequest) {
   try {
@@ -88,7 +99,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Helper function to store target for a round
-export function storeTarget(objectId: number, target: { lat: number; lng: number }, object: any) {
+export function storeTarget(objectId: number, target: { lat: number; lng: number }, object: GameObject) {
   currentTargets.set(objectId, { target, object });
 }
 

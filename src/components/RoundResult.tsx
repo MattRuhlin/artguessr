@@ -37,14 +37,6 @@ export default function RoundResult({
     return 'text-red-600';                          // Keep trying (8500km+)
   };
   
-  const getScoreMessage = (score: number) => {
-    if (score >= 5000) return 'Perfect!';
-    if (score >= 4000) return 'Excellent!';
-    if (score >= 2500) return 'Good job!';
-    if (score >= 1000) return 'Good guess!';
-    if (score >= 500) return 'Not bad!';
-    return 'Keep trying!';
-  };
 
   const getKirbyImage = (score: number) => {
     if (score >= 5000) return { src: '/kirby/perfect.png', alt: 'Perfect Kirby' };

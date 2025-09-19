@@ -21,6 +21,7 @@ const Popup = dynamic(() => import('react-leaflet').then((mod) => mod.Popup), { 
 const setupLeafletIcons = () => {
   if (typeof window !== 'undefined') {
     import('leaflet').then((L) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (L.Icon.Default.prototype as any)._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
@@ -48,7 +49,7 @@ function MapClickHandler({ onGuess, onProcessingChange }: {
   useEffect(() => {
     if (!map) return;
     
-    const handleClick = async (e: any) => {
+    const handleClick = async (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
       onProcessingChange(true);
       
@@ -147,6 +148,7 @@ export default function GuessMap({
           <Marker 
             position={[guessPosition.lat, guessPosition.lng]}
             icon={typeof window !== 'undefined' ? (() => {
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
               const L = require('leaflet');
               return new L.Icon({
                 iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
@@ -171,6 +173,7 @@ export default function GuessMap({
           <Marker 
             position={[targetPosition.lat, targetPosition.lng]}
             icon={typeof window !== 'undefined' ? (() => {
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
               const L = require('leaflet');
               return new L.Icon({
                 iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',

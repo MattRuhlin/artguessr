@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import ArtworkPanel from '@/components/ArtworkPanel';
 import GuessMap from '@/components/GuessMap';
@@ -38,39 +38,13 @@ export default function GamePage() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [preloadedObject, setPreloadedObject] = useState<GameObject | null>(null);
-  const preloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const TOTAL_ROUNDS = 5;
   
-  useEffect(() => {
-    loadNewObject();
-    
-    // Cleanup timeout on unmount
-    return () => {
-      if (preloadTimeoutRef.current) {
-        clearTimeout(preloadTimeoutRef.current);
-      }
-    };
-  }, []);
-  
-  const loadNewObject = async () => {
+  const loadNewObject = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Use preloaded object if available
-      if (preloadedObject) {
-        setCurrentObject(preloadedObject);
-        setPreloadedObject(null);
-        setGuessPosition(null);
-        setRoundScore(null);
-        setLoading(false);
-        
-        // Start preloading the next object
-        startPreloading();
-        return;
-      }
       
       const response = await fetch('/api/random-object');
       
@@ -83,35 +57,18 @@ export default function GamePage() {
       setGuessPosition(null);
       setRoundScore(null);
       
-      // Start preloading the next object
-      startPreloading();
     } catch (error) {
       console.error('Error loading object:', error);
       setError('Failed to load artwork. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
   
-  const startPreloading = () => {
-    // Clear any existing timeout
-    if (preloadTimeoutRef.current) {
-      clearTimeout(preloadTimeoutRef.current);
-    }
-    
-    // Start preloading after a short delay to not interfere with current loading
-    preloadTimeoutRef.current = setTimeout(async () => {
-      try {
-        const response = await fetch('/api/random-object');
-        if (response.ok) {
-          const nextObject = await response.json();
-          setPreloadedObject(nextObject);
-        }
-      } catch (error) {
-        console.error('Error preloading next object:', error);
-      }
-    }, 1000);
-  };
+  useEffect(() => {
+    loadNewObject();
+  }, [loadNewObject]);
+  
   
   const handleGuess = (lat: number, lng: number) => {
     setGuessPosition({ lat, lng });
