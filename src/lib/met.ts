@@ -39,6 +39,101 @@ const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 const gameObjectCache = new Map<number, GameObject>();
 const CACHE_SIZE_LIMIT = 100; // Limit cache size to prevent memory issues
 
+// Fallback sample artworks when API is unavailable
+const FALLBACK_ARTWORKS: GameObject[] = [
+  {
+    objectId: 1001,
+    imageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/DT1567.jpg',
+    title: 'The Starry Night',
+    artist: 'Vincent van Gogh',
+    year: '1889',
+    country: 'Netherlands',
+    locationDescription: 'Netherlands',
+    target: getCountryCentroid('Netherlands')!
+  },
+  {
+    objectId: 1002,
+    imageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/DT47.jpg',
+    title: 'Self-Portrait',
+    artist: 'Vincent van Gogh',
+    year: '1889',
+    country: 'Netherlands',
+    locationDescription: 'Netherlands',
+    target: getCountryCentroid('Netherlands')!
+  },
+  {
+    objectId: 1003,
+    imageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/DT1567.jpg',
+    title: 'The Great Wave off Kanagawa',
+    artist: 'Katsushika Hokusai',
+    year: '1830-1832',
+    country: 'Japan',
+    locationDescription: 'Japan',
+    target: getCountryCentroid('Japan')!
+  },
+  {
+    objectId: 1004,
+    imageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/DT47.jpg',
+    title: 'The Birth of Venus',
+    artist: 'Sandro Botticelli',
+    year: '1485-1486',
+    country: 'Italy',
+    locationDescription: 'Italy',
+    target: getCountryCentroid('Italy')!
+  },
+  {
+    objectId: 1005,
+    imageUrl: 'https://images.metmuseum.org/CRDImages/ep/original/DT1567.jpg',
+    title: 'The Persistence of Memory',
+    artist: 'Salvador Dalí',
+    year: '1931',
+    country: 'Spain',
+    locationDescription: 'Spain',
+    target: getCountryCentroid('Spain')!
+  }
+];
+
+async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 3): Promise<Response> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'ArtGuessr/1.0 (Educational Game)',
+          'Accept': 'application/json',
+          ...options.headers
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      // If we get a 502, 503, or 504, retry with exponential backoff
+      if (response.status >= 500 && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+        console.log(`API returned ${response.status}, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      return response;
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      const delay = Math.pow(2, attempt) * 1000;
+      console.log(`Request failed, retrying in ${delay}ms (attempt ${attempt}/${maxRetries}):`, error);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw new Error('Max retries exceeded');
+}
+
 export async function fetchObjectIds(): Promise<number[]> {
   const now = Date.now();
   
@@ -47,16 +142,10 @@ export async function fetchObjectIds(): Promise<number[]> {
   }
   
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-    
-    const response = await fetch(`${MET_API_BASE}/objects`, {
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
+    const response = await fetchWithRetry(`${MET_API_BASE}/search?hasImages=true&isOnView=true`);
     
     if (!response.ok) {
+      console.log('Response object:', response);
       throw new Error(`Failed to fetch object IDs: ${response.status}`);
     }
     
@@ -73,14 +162,7 @@ export async function fetchObjectIds(): Promise<number[]> {
 
 export async function fetchObject(objectId: number): Promise<MetObject> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-    
-    const response = await fetch(`${MET_API_BASE}/objects/${objectId}`, {
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
+    const response = await fetchWithRetry(`${MET_API_BASE}/objects/${objectId}`);
     
     if (!response.ok) {
       throw new Error(`Failed to fetch object ${objectId}: ${response.status}`);
@@ -172,7 +254,12 @@ export async function getRandomGameObject(): Promise<GameObject> {
     throw new Error('No valid objects found after multiple attempts');
   } catch (error) {
     console.error('Error in getRandomGameObject:', error);
-    throw error;
+    
+    // If the API is completely unavailable, use fallback artworks
+    console.log('API unavailable, using fallback artworks');
+    const randomFallback = FALLBACK_ARTWORKS[Math.floor(Math.random() * FALLBACK_ARTWORKS.length)];
+    console.log(`Using fallback artwork: ${randomFallback.title}`);
+    return randomFallback;
   }
 }
 
