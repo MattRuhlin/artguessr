@@ -118,7 +118,10 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // Reduced to 5 second timeout
+      const timeoutId = setTimeout(() => {
+        console.log(`Request timeout after 10 seconds for ${url}`);
+        controller.abort();
+      }, 10000); // Increased to 10 second timeout
 
       const doFetch = () => fetch(url, {
         ...options,
@@ -147,6 +150,12 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
       return response;
     } catch (error) {
       if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      // Don't retry on AbortError - it's likely a timeout or network issue
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log(`Request aborted, not retrying: ${error.message}`);
         throw error;
       }
       

@@ -13,14 +13,21 @@ export async function GET() {
       [string, number] | { member: string; score: number }
     >;
 
+    console.log('Raw scores from Redis:', scores);
+    
     const leaderboard = scores.map((item: [string, number] | { member: string; score: number }) => {
       if (Array.isArray(item)) {
         const [name, score] = item;
-        return { name, score: Number(score) };
+        const processed = { name: String(name || ''), score: Number(score) };
+        console.log('Processing array item:', item, '->', processed);
+        return processed;
       }
-      return { name: String(item.member), score: Number(item.score) };
-    });
+      const processed = { name: String(item.member || ''), score: Number(item.score) };
+      console.log('Processing object item:', item, '->', processed);
+      return processed;
+    }).filter(entry => entry.name && !isNaN(entry.score));
     
+    console.log('Final leaderboard:', leaderboard);
     return NextResponse.json({ scores: leaderboard });
   } catch (error) {
     console.error('Error fetching leaderboard:', error);
@@ -35,7 +42,10 @@ export async function POST(request: NextRequest) {
   try {
     const { name, score } = await request.json();
     
-    if (!name || typeof score !== 'number') {
+    console.log('Leaderboard POST received:', { name, score, scoreType: typeof score, isNaN: isNaN(score) });
+    
+    if (!name || typeof score !== 'number' || isNaN(score) || score < 0) {
+      console.log('Invalid request body:', { name, score, scoreType: typeof score, isNaN: isNaN(score) });
       return NextResponse.json(
         { error: 'Invalid request body' },
         { status: 400 }
@@ -53,11 +63,13 @@ export async function POST(request: NextRequest) {
     }
     
     // Add to leaderboard (using score as the score for sorting)
+    console.log('Adding to Redis:', { score, member: sanitizedName });
     await redis.zadd('leaderboard', { score, member: sanitizedName });
     
     // Keep only top 10
     await redis.zremrangebyrank('leaderboard', 0, -11);
     
+    console.log('Successfully added to leaderboard');
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('Error adding to leaderboard:', error);

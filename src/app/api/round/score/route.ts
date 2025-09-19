@@ -80,15 +80,20 @@ export async function POST(request: NextRequest) {
     const distanceKm = haversineKm(guess, target);
     const score = roundScore(distanceKm);
     
+    console.log('Score calculation:', { distanceKm, score, scoreType: typeof score });
+    
     // Clean up the target from memory
     currentTargets.delete(objectId);
     
-    return NextResponse.json({
+    const response = {
       score,
       distanceKm: Math.round(distanceKm),
       target,
       object
-    });
+    };
+    
+    console.log('Returning score response:', response);
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Error calculating score:', error);
     return NextResponse.json(

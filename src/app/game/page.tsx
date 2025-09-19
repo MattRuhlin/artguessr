@@ -94,8 +94,14 @@ export default function GamePage() {
       }
       
       const result = await response.json();
+      console.log('Score API result:', result);
+      console.log('Result score value:', result.score, 'Type:', typeof result.score);
       setRoundScore(result);
-      setTotalScore((prev: number) => prev + result.score);
+      setTotalScore((prev: number) => {
+        const newTotal = prev + result.score;
+        console.log('Updating total score:', prev, '+', result.score, '=', newTotal);
+        return newTotal;
+      });
     } catch (error) {
       console.error('Error submitting guess:', error);
       setError('Failed to calculate score. Please try again.');
@@ -113,6 +119,7 @@ export default function GamePage() {
   
   const submitToLeaderboard = async (name: string) => {
     try {
+      console.log('Submitting to leaderboard:', { name, score: totalScore, scoreType: typeof totalScore });
       const response = await fetch('/api/leaderboard', {
         method: 'POST',
         headers: {
@@ -123,6 +130,9 @@ export default function GamePage() {
       
       if (response.ok) {
         setShowLeaderboard(true);
+      } else {
+        const errorData = await response.json();
+        console.error('Leaderboard submission failed:', errorData);
       }
     } catch (error) {
       console.error('Error submitting to leaderboard:', error);
