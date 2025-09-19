@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "generate:met-fallback": "node scripts/generate-met-fallback.mjs"
   },
   "dependencies": {
     "@vercel/kv": "^3.0.0",

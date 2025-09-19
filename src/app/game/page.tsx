@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ArtworkPanel from '@/components/ArtworkPanel';
 import GuessMap from '@/components/GuessMap';
@@ -18,6 +18,7 @@ interface GameObject {
   country: string;
   locationDescription: string;
   target: LatLng;
+  medium?: string;
 }
 
 interface RoundScore {
@@ -137,7 +138,7 @@ export default function GamePage() {
       
       const result = await response.json();
       setRoundScore(result);
-      setTotalScore(prev => prev + result.score);
+      setTotalScore((prev: number) => prev + result.score);
     } catch (error) {
       console.error('Error submitting guess:', error);
       setError('Failed to calculate score. Please try again.');
@@ -148,7 +149,7 @@ export default function GamePage() {
     if (currentRound >= TOTAL_ROUNDS) {
       setGameComplete(true);
     } else {
-      setCurrentRound(prev => prev + 1);
+      setCurrentRound((prev: number) => prev + 1);
       loadNewObject();
     }
   };
