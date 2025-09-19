@@ -2,8 +2,16 @@
 @import "leaflet/dist/leaflet.css";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0a0a;
+  --foreground: #f0f0f0;
+  --metal-red: #8b0000;
+  --metal-gold: #b8860b;
+  --metal-silver: #a0a0a0;
+  --metal-dark: #1a1a1a;
+  --metal-darker: #0d0d0d;
+  --metal-muted: #2a2a2a;
+  --text-light: #ffffff;
+  --text-muted: #cccccc;
 }
 
 @theme inline {
@@ -11,17 +19,184 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-creepster: var(--font-creepster);
+  --font-metal-mania: var(--font-metal-mania);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Muted Metal-themed utility classes */
+.metal-title {
+  font-family: var(--font-creepster);
+  text-shadow: 2px 2px 4px #000, 0 0 8px var(--metal-red);
+  color: var(--metal-red);
+  letter-spacing: 2px;
+}
+
+.metal-subtitle {
+  font-family: var(--font-metal-mania);
+  text-shadow: 1px 1px 2px #000, 0 0 4px var(--metal-gold);
+  color: var(--metal-gold);
+  letter-spacing: 1px;
+}
+
+.metal-button {
+  background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+  border: 2px solid var(--metal-red);
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.7),
+    0 0 8px rgba(139, 0, 0, 0.2);
+  text-shadow: 1px 1px 2px #000;
+  font-weight: bold;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+  color: var(--foreground);
+}
+
+.metal-button:hover {
+  background: linear-gradient(145deg, #3a3a3a, #2a2a2a);
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 4px 8px rgba(0, 0, 0, 0.8),
+    0 0 12px rgba(139, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.metal-card {
+  background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
+  border: 1px solid var(--metal-silver);
+  box-shadow: 
+    0 4px 8px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  position: relative;
+}
+
+.metal-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--metal-red), transparent);
+}
+
+.metal-glow {
+  animation: metal-glow 3s ease-in-out infinite alternate;
+}
+
+@keyframes metal-glow {
+  from {
+    text-shadow: 2px 2px 4px #000, 0 0 8px var(--metal-red);
+  }
+  to {
+    text-shadow: 2px 2px 4px #000, 0 0 15px var(--metal-red), 0 0 20px var(--metal-red);
+  }
+}
+
+/* Spooky Fall-themed styles */
+.spooky-frame {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 
+    0 0 20px rgba(139, 0, 0, 0.3),
+    0 0 40px rgba(139, 0, 0, 0.1),
+    inset 0 0 20px rgba(0, 0, 0, 0.5);
+  border: 3px solid var(--metal-red);
+  transform: perspective(1000px) rotateX(5deg);
+  transition: all 0.3s ease;
+}
+
+.spooky-frame:hover {
+  transform: perspective(1000px) rotateX(0deg) scale(1.05);
+  box-shadow: 
+    0 0 30px rgba(139, 0, 0, 0.5),
+    0 0 60px rgba(139, 0, 0, 0.2),
+    inset 0 0 30px rgba(0, 0, 0, 0.7);
+}
+
+.spooky-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: sepia(0.3) contrast(1.1) brightness(0.9);
+  transition: filter 0.3s ease;
+}
+
+.spooky-frame:hover img {
+  filter: sepia(0.1) contrast(1.2) brightness(1.1);
+}
+
+.spooky-float {
+  animation: spooky-float 4s ease-in-out infinite;
+}
+
+@keyframes spooky-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-10px) rotate(1deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-15px) rotate(-1deg);
+  }
+}
+
+.spooky-glow {
+  animation: spooky-glow 3s ease-in-out infinite alternate;
+}
+
+@keyframes spooky-glow {
+  from {
+    box-shadow: 
+      0 0 20px rgba(139, 0, 0, 0.3),
+      0 0 40px rgba(139, 0, 0, 0.1);
+  }
+  to {
+    box-shadow: 
+      0 0 30px rgba(139, 0, 0, 0.5),
+      0 0 60px rgba(139, 0, 0, 0.2),
+      0 0 80px rgba(184, 134, 11, 0.1);
+  }
+}
+
+.fall-leaves {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(45deg, #8b4513, #cd853f);
+  border-radius: 50% 0 50% 0;
+  animation: fall 8s linear infinite;
+  opacity: 0.7;
+}
+
+.fall-leaves:nth-child(odd) {
+  background: linear-gradient(45deg, #8b0000, #cd5c5c);
+  animation-delay: -2s;
+}
+
+.fall-leaves:nth-child(even) {
+  background: linear-gradient(45deg, #daa520, #ffd700);
+  animation-delay: -4s;
+}
+
+@keyframes fall {
+  0% {
+    transform: translateY(-100vh) rotate(0deg);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(100vh) rotate(360deg);
+    opacity: 0;
+  }
 }

@@ -1,13 +1,8 @@
-# ArtGuessr
+# MetGuessr
 
-A GeoGuessr-style game for art lovers! Test your knowledge of art history by guessing where famous artworks were created.
+A GeoGuessr-style game but for art objects from the Met's collection!
 
-## How to Play
-
-1. Look at the artwork displayed on the left
-2. Click on the world map where you think the artwork was created
-3. Get points based on how close your guess is to the actual location
-4. Play 5 rounds and try to achieve the highest score possible!
+Locations are normalized to the center of a country.
 
 ## Features
 
@@ -17,6 +12,8 @@ A GeoGuessr-style game for art lovers! Test your knowledge of art history by gue
 - **Real Artworks**: All images are from The Metropolitan Museum of Art's Open Access collection
 
 ## Tech Stack
+
+Built with Cursor <3
 
 - **Frontend**: Next.js 14 with TypeScript and React
 - **Styling**: Tailwind CSS
@@ -61,8 +58,8 @@ This app is designed to be deployed on Vercel. Make sure to set up Vercel KV for
 The scoring system uses the Haversine formula to calculate the distance between your guess and the actual location:
 
 - **Perfect guess (0km)**: 5000 points
-- **2000km away**: 0 points
-- **Smooth curve**: Points decrease quadratically with distance
+- **10000km away**: 0 points
+- **Linear decay**: Points decrease linearly with distance
 
 ## License
 

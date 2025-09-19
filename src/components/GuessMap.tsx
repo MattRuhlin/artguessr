@@ -107,8 +107,8 @@ export default function GuessMap({
   
   if (!isClient) {
     return (
-      <div className={`w-full h-full bg-gray-200 flex items-center justify-center ${className}`}>
-        Loading map...
+      <div className={`w-full h-full bg-gray-800 flex items-center justify-center ${className}`}>
+        <span className="text-white">Loading map...</span>
       </div>
     );
   }
@@ -117,10 +117,10 @@ export default function GuessMap({
     <div className={`w-full h-full relative ${className}`}>
       {/* Loading overlay */}
       {isProcessing && (
-        <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-4 flex items-center space-x-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            <span className="text-gray-700 font-medium">Detecting country...</span>
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="metal-card rounded-lg p-4 flex items-center space-x-3">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+            <span className="text-white font-medium">Detecting country...</span>
           </div>
         </div>
       )}
@@ -132,8 +132,8 @@ export default function GuessMap({
         style={{ height: '100%', width: '100%' }}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
         
         {!isRevealed && (

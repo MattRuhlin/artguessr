@@ -7,7 +7,6 @@ import GuessMap from '@/components/GuessMap';
 import RoundResult from '@/components/RoundResult';
 import Leaderboard from '@/components/Leaderboard';
 import { LatLng } from '@/lib/scoring';
-import { preloadNextGameObject } from '@/lib/met';
 
 interface GameObject {
   objectId: number;
@@ -103,8 +102,9 @@ export default function GamePage() {
     // Start preloading after a short delay to not interfere with current loading
     preloadTimeoutRef.current = setTimeout(async () => {
       try {
-        const nextObject = await preloadNextGameObject();
-        if (nextObject) {
+        const response = await fetch('/api/random-object');
+        if (response.ok) {
+          const nextObject = await response.json();
           setPreloadedObject(nextObject);
         }
       } catch (error) {
@@ -174,10 +174,10 @@ export default function GamePage() {
   
   if (loading && !currentObject) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading artwork...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto"></div>
+          <p className="mt-4 text-white">Loading artwork...</p>
         </div>
       </div>
     );
@@ -185,12 +185,12 @@ export default function GamePage() {
   
   if (error && !currentObject) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-600 mb-4">{error}</p>
+          <p className="text-red-400 mb-4">{error}</p>
           <button
             onClick={loadNewObject}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg"
+            className="metal-button text-white font-semibold py-2 px-4 rounded-lg"
           >
             Try Again
           </button>
@@ -201,12 +201,12 @@ export default function GamePage() {
   
   if (gameComplete) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
-          <h1 className="text-3xl font-bold text-center mb-6">Game Complete!</h1>
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex items-center justify-center">
+        <div className="metal-card rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
+          <h1 className="text-3xl font-bold text-center mb-6 metal-title">GAME COMPLETE!</h1>
           <div className="text-center mb-6">
-            <p className="text-lg text-gray-900 mb-2">Final Score</p>
-            <p className="text-4xl font-bold text-blue-600">{totalScore.toLocaleString()}</p>
+            <p className="text-lg text-white mb-2">Final Score</p>
+            <p className="text-4xl font-bold metal-subtitle">{totalScore.toLocaleString()}</p>
           </div>
           
           <div className="space-y-4">
@@ -214,7 +214,7 @@ export default function GamePage() {
               type="text"
               placeholder="Enter your name"
               maxLength={24}
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-white placeholder-gray-400"
               onKeyPress={(e) => {
                 if (e.key === 'Enter') {
                   const name = (e.target as HTMLInputElement).value.trim();
@@ -231,13 +231,13 @@ export default function GamePage() {
                   submitToLeaderboard(name);
                 }
               }}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg"
+              className="w-full metal-button text-white font-semibold py-3 px-4 rounded-lg"
             >
               Submit Score
             </button>
             <button
               onClick={() => router.push('/')}
-              className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg"
+              className="w-full metal-button text-white font-semibold py-3 px-4 rounded-lg"
             >
               Play Again
             </button>
@@ -254,21 +254,47 @@ export default function GamePage() {
   if (!currentObject) return null;
   
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-800 flex flex-col">
       <div className="container mx-auto px-4 py-6 flex-1 flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-center mb-6 flex-shrink-0">
-          <h1 className="text-2xl font-bold text-gray-900">ArtGuessr</h1>
-          <div className="text-lg font-semibold text-gray-700">
+          <h1 className="text-2xl font-bold metal-title">METGUESSR</h1>
+          <div className="text-lg font-semibold metal-subtitle">
             Round {currentRound} of {TOTAL_ROUNDS}
           </div>
         </div>
         
         {/* Main content area - takes remaining space */}
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-[400px]">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-[400px]">
+            {/* Controls - left side */}
+            <div className="lg:col-span-2 h-full flex flex-col justify-center">
+              {!roundScore ? (
+                <div className="text-center">
+                  {guessPosition ? (
+                    <button
+                      onClick={submitGuess}
+                      className="metal-button text-white font-semibold py-3 px-6 rounded-lg"
+                    >
+                      Submit Guess
+                    </button>
+                  ) : (
+                    <p className="text-white">Click on the map to place your guess</p>
+                  )}
+                </div>
+              ) : (
+                <RoundResult
+                  score={roundScore.score}
+                  distanceKm={roundScore.distanceKm}
+                  object={roundScore.object}
+                  onNext={nextRound}
+                  isLastRound={currentRound >= TOTAL_ROUNDS}
+                />
+              )}
+            </div>
+            
             {/* Artwork Panel */}
-            <div className="h-full">
+            <div className="lg:col-span-5 h-full">
               <ArtworkPanel
                 imageUrl={currentObject.imageUrl}
                 title={currentObject.title}
@@ -281,8 +307,8 @@ export default function GamePage() {
             </div>
             
             {/* Map Panel */}
-            <div className="h-full">
-              <div className="h-full bg-white rounded-lg shadow-lg overflow-hidden">
+            <div className="lg:col-span-5 h-full">
+              <div className="h-full metal-card rounded-lg shadow-lg overflow-hidden">
                 <GuessMap
                   onGuess={handleGuess}
                   guessPosition={guessPosition || undefined}
@@ -292,32 +318,6 @@ export default function GamePage() {
                 />
               </div>
             </div>
-          </div>
-          
-          {/* Controls - always at bottom */}
-          <div className="mt-6 py-4 flex justify-center flex-shrink-0">
-            {!roundScore ? (
-              <div className="text-center">
-                {guessPosition ? (
-                  <button
-                    onClick={submitGuess}
-                    className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg"
-                  >
-                    Submit Guess
-                  </button>
-                ) : (
-                  <p className="text-gray-600">Click on the map to place your guess</p>
-                )}
-              </div>
-            ) : (
-              <RoundResult
-                score={roundScore.score}
-                distanceKm={roundScore.distanceKm}
-                object={roundScore.object}
-                onNext={nextRound}
-                isLastRound={currentRound >= TOTAL_ROUNDS}
-              />
-            )}
           </div>
         </div>
       </div>

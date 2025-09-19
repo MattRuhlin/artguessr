@@ -4,7 +4,7 @@ import { kv } from '@vercel/kv';
 export async function GET() {
   try {
     // Get top 10 scores from KV store
-    const scores = await kv.zrevrange('leaderboard', 0, 9, { withScores: true });
+    const scores = await kv.zrange('leaderboard', 0, 9, { withScores: true, rev: true });
     
     const leaderboard = scores.map(([name, score]) => ({
       name: name as string,

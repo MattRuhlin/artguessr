@@ -41,10 +41,34 @@ const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 const gameObjectCache = new Map<number, GameObject>();
 const CACHE_SIZE_LIMIT = 100; // Limit cache size to prevent memory issues
 
-// Global rate limiter to ensure we never exceed 80 requests/second to MET API
-const RATE_LIMIT_RPS = 80;
+// Global rate limiter to ensure we never exceed 50 requests/second to MET API
+const RATE_LIMIT_RPS = 50;
 let availableTokens = RATE_LIMIT_RPS;
 const pendingQueue: Array<() => void> = [];
+
+// Circuit breaker to avoid repeated API failures
+let apiFailureCount = 0;
+let lastApiFailureTime = 0;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+function isCircuitBreakerOpen(): boolean {
+  const now = Date.now();
+  if (now - lastApiFailureTime > CIRCUIT_BREAKER_TIMEOUT) {
+    apiFailureCount = 0; // Reset after timeout
+    return false;
+  }
+  return apiFailureCount >= CIRCUIT_BREAKER_THRESHOLD;
+}
+
+function recordApiFailure(): void {
+  apiFailureCount++;
+  lastApiFailureTime = Date.now();
+}
+
+function recordApiSuccess(): void {
+  apiFailureCount = 0;
+}
 
 function drainQueue() {
   while (availableTokens > 0 && pendingQueue.length > 0) {
@@ -91,11 +115,11 @@ const EMERGENCY_FALLBACK_ARTWORKS: GameObject[] = [
   }
 ];
 
-async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 3): Promise<Response> {
+async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 2): Promise<Response> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // Reduced to 5 second timeout
 
       const doFetch = () => fetch(url, {
         ...options,
@@ -113,9 +137,9 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
 
       clearTimeout(timeoutId);
       
-      // If we get a 502, 503, or 504, retry with exponential backoff
+      // If we get a 502, 503, or 504, retry with shorter backoff
       if (response.status >= 500 && attempt < maxRetries) {
-        const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+        const delay = attempt * 1000; // Linear backoff: 1s, 2s
         console.log(`API returned ${response.status}, retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
@@ -127,7 +151,7 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
         throw error;
       }
       
-      const delay = Math.pow(2, attempt) * 1000;
+      const delay = attempt * 1000; // Linear backoff: 1s, 2s
       console.log(`Request failed, retrying in ${delay}ms (attempt ${attempt}/${maxRetries}):`, error);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
@@ -136,94 +160,6 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries
   throw new Error('Max retries exceeded');
 }
 
-// ------------------------------
-// Dynamic fallback pool builder
-// ------------------------------
-let fallbackPool: GameObject[] = [];
-let fallbackPoolLastBuilt = 0;
-let fallbackBuildPromise: Promise<void> | null = null;
-const FALLBACK_POOL_TTL = 24 * 60 * 60 * 1000; // 24 hours
-
-async function buildFallbackPool(minSize = 500): Promise<void> {
-  const queries = ['a', 'e', 'i', 'o', 'u', 'the', 'of', 'and', 'art', 'painting', 'sculpture', 'ceramic', 'print', 'textile', 'metal'];
-  const objectIdSet = new Set<number>();
-
-  for (const q of queries) {
-    try {
-      const response = await fetchWithRetry(`${MET_API_BASE}/search?hasImages=true&q=${encodeURIComponent(q)}`);
-      if (!response.ok) continue;
-      const data = await response.json();
-      const ids: number[] = data.objectIDs || [];
-      for (const id of ids) {
-        objectIdSet.add(id);
-        if (objectIdSet.size >= minSize * 10) break; // cap to avoid too many
-      }
-      if (objectIdSet.size >= minSize * 10) break;
-    } catch (err) {
-      console.warn('Search query failed while building fallback pool:', err);
-    }
-  }
-
-  const allIds = Array.from(objectIdSet);
-  // Shuffle
-  for (let i = allIds.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [allIds[i], allIds[j]] = [allIds[j], allIds[i]];
-  }
-
-  const results: GameObject[] = [];
-
-  for (const objectId of allIds) {
-    if (results.length >= minSize) break;
-    try {
-      const object = await fetchObject(objectId);
-      if (!object.isPublicDomain) continue;
-      const imageUrl = object.primaryImageSmall || object.primaryImage;
-      if (!imageUrl) continue;
-      if (!object.country || object.country.trim() === '') continue;
-
-      const target = getCountryCentroid(object.country);
-      if (!target) continue;
-
-      results.push({
-        objectId: object.objectID,
-        imageUrl,
-        title: object.title || 'Untitled',
-        artist: object.artistDisplayName || 'Unknown Artist',
-        year: object.objectDate || 'Unknown Date',
-        country: object.country,
-        locationDescription: object.country,
-        target,
-        medium: (object.medium || '').trim() || undefined
-      });
-    } catch (err) {
-      // ignore individual failures
-    }
-  }
-
-  if (results.length > 0) {
-    fallbackPool = results;
-    fallbackPoolLastBuilt = Date.now();
-    console.log(`Built fallback pool with ${fallbackPool.length} objects`);
-  } else {
-    console.warn('Failed to build fallback pool; keeping existing pool');
-  }
-}
-
-async function ensureFallbackPool(): Promise<void> {
-  const fresh = (Date.now() - fallbackPoolLastBuilt) < FALLBACK_POOL_TTL && fallbackPool.length > 0;
-  if (fresh) return;
-  if (!fallbackBuildPromise) {
-    fallbackBuildPromise = buildFallbackPool().finally(() => {
-      fallbackBuildPromise = null;
-    });
-  }
-  try {
-    await fallbackBuildPromise;
-  } catch {
-    // ignore; will rely on small static fallback
-  }
-}
 
 export async function fetchObjectIds(): Promise<number[]> {
   const now = Date.now();
@@ -232,37 +168,55 @@ export async function fetchObjectIds(): Promise<number[]> {
     return objectIdsCache;
   }
   
+  // Check circuit breaker
+  if (isCircuitBreakerOpen()) {
+    console.log('Circuit breaker is open, skipping API call');
+    throw new Error('API circuit breaker is open');
+  }
+  
   try {
     const response = await fetchWithRetry(`${MET_API_BASE}/search?hasImages=true&q=a`);
     
     if (!response.ok) {
       console.log('Response object:', response);
+      recordApiFailure();
       throw new Error(`Failed to fetch object IDs: ${response.status}`);
     }
     
     const data = await response.json();
     objectIdsCache = data.objectIDs || [];
     lastFetchTime = now;
+    recordApiSuccess();
     
     return objectIdsCache || [];
   } catch (error) {
     console.error('Error fetching object IDs:', error);
+    recordApiFailure();
     throw new Error('Failed to fetch object IDs from Met Museum API');
   }
 }
 
 export async function fetchObject(objectId: number): Promise<MetObject> {
+  // Check circuit breaker
+  if (isCircuitBreakerOpen()) {
+    console.log('Circuit breaker is open, skipping API call');
+    throw new Error('API circuit breaker is open');
+  }
+  
   try {
     const response = await fetchWithRetry(`${MET_API_BASE}/objects/${objectId}`);
     
     if (!response.ok) {
+      recordApiFailure();
       throw new Error(`Failed to fetch object ${objectId}: ${response.status}`);
     }
     
     const data = await response.json();
+    recordApiSuccess();
     return data;
   } catch (error) {
     console.error(`Error fetching object ${objectId}:`, error);
+    recordApiFailure();
     throw new Error(`Failed to fetch object ${objectId} from Met Museum API`);
   }
 }
@@ -270,34 +224,44 @@ export async function fetchObject(objectId: number): Promise<MetObject> {
 export async function getRandomGameObject(): Promise<GameObject> {
   console.log('Starting getRandomGameObject...');
   
+  // First, try to get a random object from the static fallback for instant response
+  if (MET_FALLBACK_GAME_OBJECTS.length > 0) {
+    const randomFallback = MET_FALLBACK_GAME_OBJECTS[Math.floor(Math.random() * MET_FALLBACK_GAME_OBJECTS.length)];
+    console.log(`Using static fallback artwork for instant response: ${randomFallback.title}`);
+    
+    // Start background API refresh if circuit breaker is not open
+    if (!isCircuitBreakerOpen()) {
+      console.log('Starting background API refresh...');
+      refreshFromApiInBackground().catch(error => {
+        console.log('Background API refresh failed:', error);
+      });
+    }
+    
+    return randomFallback;
+  }
+  
+  // If no fallback data, try API with fast failure
   try {
-    // Build or refresh fallback pool in the background (non-blocking)
-    ensureFallbackPool().catch(() => {});
-
-    // Get random object IDs from the API
+    console.log('No fallback data available, trying API...');
     const objectIds = await fetchObjectIds();
-    const maxAttempts = 10;
+    const maxAttempts = 5; // Reduced attempts
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        // Pick a random object ID
         const randomIndex = Math.floor(Math.random() * objectIds.length);
         const objectId = objectIds[randomIndex];
         
         console.log(`Attempt ${attempt + 1}: Trying object ID: ${objectId}`);
         
-        // Check if we already have this object cached
         if (gameObjectCache.has(objectId)) {
           const cachedObject = gameObjectCache.get(objectId)!;
           console.log(`Using cached object: ${cachedObject.title}`);
           return cachedObject;
         }
         
-        // Fetch the object details
         const object = await fetchObject(objectId);
         console.log(`Fetched object: ${object.title}, public domain: ${object.isPublicDomain}, country: "${object.country}"`);
         
-        // Basic validation - only require public domain, image, and country
         if (!object.isPublicDomain) {
           console.log('Skipping: not public domain');
           continue;
@@ -314,7 +278,6 @@ export async function getRandomGameObject(): Promise<GameObject> {
           continue;
         }
         
-        // Always use country centroid - no complex geocoding
         const target = getCountryCentroid(object.country);
         if (!target) {
           console.log(`Skipping: no country centroid for "${object.country}"`);
@@ -330,14 +293,12 @@ export async function getRandomGameObject(): Promise<GameObject> {
           artist: object.artistDisplayName || 'Unknown Artist',
           year: object.objectDate || 'Unknown Date',
           country: object.country,
-          locationDescription: object.country, // Just show the country
+          locationDescription: object.country,
           target: target,
           medium: (object.medium || '').trim() || undefined
         };
         
-        // Cache the successful object
         gameObjectCache.set(objectId, gameObject);
-        
         console.log(`Successfully created game object: ${gameObject.title} from ${gameObject.country}`);
         return gameObject;
       } catch (error) {
@@ -350,40 +311,59 @@ export async function getRandomGameObject(): Promise<GameObject> {
   } catch (error) {
     console.error('Error in getRandomGameObject:', error);
     
-    // If the API is unavailable or no valid objects found, use large static generated list first
-    try {
-      if (MET_FALLBACK_GAME_OBJECTS.length > 0) {
-        const randomFallback = MET_FALLBACK_GAME_OBJECTS[Math.floor(Math.random() * MET_FALLBACK_GAME_OBJECTS.length)];
-        console.log(`Using dynamic fallback artwork: ${randomFallback.title}`);
-        return randomFallback;
-      }
-    } catch {}
-
-    // Then try dynamic pool if available
-    try {
-      await ensureFallbackPool();
-      if (fallbackPool.length > 0) {
-        const randomFallback = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
-        console.log(`Using dynamic fallback artwork: ${randomFallback.title}`);
-        return randomFallback;
-      }
-    } catch {}
-
-    // As a last resort, use ultra-tiny emergency list
-    console.log('Fallback pools unavailable, using emergency static fallback artworks');
+    // Emergency fallback
+    console.log('Using emergency fallback artworks');
     const randomFallback = EMERGENCY_FALLBACK_ARTWORKS[Math.floor(Math.random() * EMERGENCY_FALLBACK_ARTWORKS.length)];
-    console.log(`Using fallback artwork: ${randomFallback.title}`);
+    console.log(`Using emergency fallback artwork: ${randomFallback.title}`);
     return randomFallback;
   }
 }
 
-// Function to preload the next artwork
-export async function preloadNextGameObject(): Promise<GameObject | null> {
+// Background function to refresh data from API without blocking the response
+async function refreshFromApiInBackground(): Promise<void> {
   try {
-    return await getRandomGameObject();
+    console.log('Background: Fetching fresh object IDs...');
+    const objectIds = await fetchObjectIds();
+    
+    // Cache a few random objects for future use
+    const numToCache = Math.min(5, objectIds.length);
+    for (let i = 0; i < numToCache; i++) {
+      try {
+        const randomIndex = Math.floor(Math.random() * objectIds.length);
+        const objectId = objectIds[randomIndex];
+        
+        if (!gameObjectCache.has(objectId)) {
+          const object = await fetchObject(objectId);
+          
+          if (object.isPublicDomain && (object.primaryImageSmall || object.primaryImage) && object.country) {
+            const target = getCountryCentroid(object.country);
+            if (target) {
+              const gameObject = {
+                objectId: object.objectID,
+                imageUrl: object.primaryImageSmall || object.primaryImage,
+                title: object.title || 'Untitled',
+                artist: object.artistDisplayName || 'Unknown Artist',
+                year: object.objectDate || 'Unknown Date',
+                country: object.country,
+                locationDescription: object.country,
+                target: target,
+                medium: (object.medium || '').trim() || undefined
+              };
+              
+              gameObjectCache.set(objectId, gameObject);
+              console.log(`Background: Cached object ${gameObject.title}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.log(`Background: Failed to cache object ${i + 1}:`, error);
+      }
+    }
+    
+    console.log('Background: API refresh completed');
   } catch (error) {
-    console.error('Error preloading next object:', error);
-    return null;
+    console.log('Background: API refresh failed:', error);
   }
 }
+
 
