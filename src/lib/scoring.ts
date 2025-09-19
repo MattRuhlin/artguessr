@@ -14,15 +14,18 @@ export function haversineKm(a: LatLng, b: LatLng): number {
 }
 
 export function roundScore(distanceKm: number): number {
-  // Moderately lenient scoring:
+  // More strict scoring with steeper penalty in middle range:
   // - Maximum distance for any points: 10,000km
-  // - Linear decay from 5000 points at 0km to 0 points at 10,000km
+  // - Non-linear decay that's stricter in the middle range (2000-6000km)
   const maxDistance = 10000;
   const maxScore = 5000;
   
   if (distanceKm >= maxDistance) return 0;
   
-  const s = 1 - distanceKm / maxDistance;
+  // Use a quadratic function that's steeper in the middle range
+  // This makes the scoring more strict for distances between 2000-6000km
+  const normalizedDistance = distanceKm / maxDistance;
+  const s = Math.pow(1 - normalizedDistance, 1.5); // 1.5 exponent makes it steeper
   const score = maxScore * s;
   return Math.round(score);
 }

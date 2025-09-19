@@ -30,18 +30,18 @@ export default function RoundResult({
 }: RoundResultProps) {
   const getScoreColor = (score: number) => {
     if (score >= 5000) return 'text-green-600';     // Perfect (0km)
-    if (score >= 4000) return 'text-green-500';     // Excellent (0-2000km)
-    if (score >= 2500) return 'text-yellow-600';    // Good job (2000-3750km)
-    if (score >= 1000) return 'text-orange-600';    // Good guess (3750-7000km)
-    if (score >= 500) return 'text-orange-500';     // Not bad (7000-8500km)
-    return 'text-red-600';                          // Keep trying (8500km+)
+    if (score >= 4000) return 'text-green-500';     // Excellent (0-1500km)
+    if (score >= 2500) return 'text-yellow-600';    // Good job (1500-3000km)
+    if (score >= 1000) return 'text-orange-600';    // Good guess (3000-5000km)
+    if (score >= 500) return 'text-orange-500';     // Not bad (5000-7000km)
+    return 'text-red-600';                          // Keep trying (7000km+)
   };
   
 
   const getKirbyImage = (score: number) => {
     if (score >= 5000) return { src: '/kirby/perfect.png', alt: 'Perfect Kirby' };
     if (score >= 4000) return { src: '/kirby/good.png', alt: 'Great Kirby' };
-    if (score >= 1500) return { src: '/kirby/okay.png', alt: 'Okay Kirby' };
+    if (score >= 1000) return { src: '/kirby/okay.png', alt: 'Okay Kirby' };
     return { src: '/kirby/bad.png', alt: 'Bad Kirby' };
   };
   
