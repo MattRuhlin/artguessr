@@ -16,20 +16,29 @@ export async function GET() {
     
     let leaderboard: Array<{ name: string; score: number }> = [];
     
+    // Helper function to extract name from unique member string
+    const extractNameFromMember = (member: string): string => {
+      // Member format: "name|timestamp|randomId" or just "name" for old entries
+      const parts = member.split('|');
+      return parts[0] || member; // Return the first part (name) or the whole string if no separator
+    };
+    
     if (Array.isArray(scores)) {
       // Handle different return formats from Redis
       if (scores.length > 0 && Array.isArray(scores[0])) {
         // Format: [['name1', score1], ['name2', score2], ...]
         leaderboard = scores.map((item: unknown) => {
-          const [name, score] = item as [string, number];
-          const processed = { name: String(name || ''), score: Number(score) };
+          const [member, score] = item as [string, number];
+          const name = extractNameFromMember(String(member || ''));
+          const processed = { name, score: Number(score) };
           console.log('Processing array item:', item, '->', processed);
           return processed;
         }).filter(entry => entry.name && !isNaN(entry.score));
       } else if (typeof scores[0] === 'string' && scores.length === 2) {
         // Format: ['name', score] for single entry
-        const [name, score] = scores;
-        const processed = { name: String(name || ''), score: Number(score) };
+        const [member, score] = scores;
+        const name = extractNameFromMember(String(member || ''));
+        const processed = { name, score: Number(score) };
         console.log('Processing single entry:', scores, '->', processed);
         if (processed.name && !isNaN(processed.score)) {
           leaderboard = [processed];
@@ -39,7 +48,8 @@ export async function GET() {
         leaderboard = [];
         for (let i = 0; i < scores.length; i += 2) {
           if (typeof scores[i] === 'string' && typeof scores[i + 1] === 'number') {
-            const processed = { name: String(scores[i]), score: Number(scores[i + 1]) };
+            const name = extractNameFromMember(String(scores[i]));
+            const processed = { name, score: Number(scores[i + 1]) };
             console.log('Processing alternated item:', [scores[i], scores[i + 1]], '->', processed);
             if (processed.name && !isNaN(processed.score)) {
               leaderboard.push(processed);
@@ -84,12 +94,21 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Add to leaderboard (using score as the score for sorting)
-    console.log('Adding to Redis:', { score, member: sanitizedName });
-    await redis.zadd('leaderboard', { score, member: sanitizedName });
+    // Create a unique member ID using timestamp and random string to allow multiple entries with same name
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    const uniqueMember = `${sanitizedName}|${timestamp}|${randomId}`;
     
-    // Keep only top 10
-    await redis.zremrangebyrank('leaderboard', 0, -11);
+    // Add to leaderboard (using score as the score for sorting)
+    console.log('Adding to Redis:', { score, member: uniqueMember });
+    await redis.zadd('leaderboard', { score, member: uniqueMember });
+    
+    // Keep only top 10 to manage storage
+    // Since the sorted set keeps highest scores first, we remove ranks 10 to end (keeping 0-9)
+    const currentSize = await redis.zcard('leaderboard');
+    if (currentSize > 10) {
+      await redis.zremrangebyrank('leaderboard', 10, -1);
+    }
     
     console.log('Successfully added to leaderboard');
     return NextResponse.json({ ok: true });
