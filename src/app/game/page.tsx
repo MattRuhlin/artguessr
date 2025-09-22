@@ -218,7 +218,10 @@ export default function GamePage() {
         
         {showLeaderboard && (
           <Leaderboard 
-            onClose={() => setShowLeaderboard(false)} 
+            onClose={() => {
+              setShowLeaderboard(false);
+              router.push('/');
+            }} 
             refreshTrigger={leaderboardRefreshTrigger}
           />
         )}
