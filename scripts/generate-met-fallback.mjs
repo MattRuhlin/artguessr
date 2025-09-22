@@ -80,15 +80,7 @@ async function main() {
 
   // Build a richer set of queries to broaden country coverage
   const baseQueries = ['the','of','and','a','art','sculpture','ceramic','textile','print','metal','wood','glass','bronze','silver','gold','ivory'];
-  const countryQueries = [
-    'France','Italy','Spain','Portugal','Germany','Netherlands','Belgium','United Kingdom','England','Scotland',
-    'Ireland','Greece','Turkey','Russia','Poland','Austria','Hungary','Sweden','Norway','Denmark','Finland',
-    'United States','Canada','Mexico','Peru','Brazil','Argentina','Colombia','Chile','Cuba',
-    'China','Japan','Korea','India','Pakistan','Bangladesh','Sri Lanka','Thailand','Vietnam','Indonesia','Philippines',
-    'Iran','Iraq','Syria','Lebanon','Israel','Jordan','Saudi Arabia','Yemen','Oman','United Arab Emirates','Qatar','Bahrain',
-    'Egypt','Morocco','Algeria','Tunisia','Libya','Ethiopia','Eritrea','Sudan','Kenya','Tanzania','Uganda','Ghana','Nigeria','South Africa',
-  ];
-  const queries = [...baseQueries, ...countryQueries];
+  // We'll also construct geoLocation-based queries below based on centroids
 
   // Determine current fallback size and target double
   let currentCount = 0;
@@ -105,11 +97,40 @@ async function main() {
 
   const idSet = new Set();
 
-  for (const q of queries) {
+  // Load centroids to derive valid countries for geoLocation searches as well
+  const centroidJsonPath = path.resolve(process.cwd(), 'src/data/country-centroids.json');
+  const centroidJson = JSON.parse(await fs.promises.readFile(centroidJsonPath, 'utf8'));
+  const validCountries = new Set(Object.keys(centroidJson));
+
+  // 1) Broad base queries
+  for (const q of baseQueries) {
     try {
-      // Apply medium=Paintings on ~20% of search requests to increase painting frequency
       const usePaintings = Math.random() < 0.20;
       const searchUrl = `${MET_API_BASE}/search?hasImages=true&q=${encodeURIComponent(q)}${usePaintings ? '&medium=Paintings' : ''}`;
+      const resp = await fetchWithRetry(searchUrl);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const ids = data.objectIDs || [];
+      for (const id of ids) {
+        idSet.add(id);
+        if (idSet.size >= desiredCount * 8) break;
+      }
+      if (idSet.size >= desiredCount * 8) break;
+    } catch {}
+  }
+
+  // 2) GeoLocation-focused searches to ensure country coverage
+  const geoCountries = Array.from(validCountries);
+  // Shuffle to avoid bias
+  for (let i = geoCountries.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [geoCountries[i], geoCountries[j]] = [geoCountries[j], geoCountries[i]];
+  }
+  for (const country of geoCountries) {
+    try {
+      const usePaintings = Math.random() < 0.20;
+      // q is required; use a broad token 'a' to maximize results
+      const searchUrl = `${MET_API_BASE}/search?hasImages=true&q=a&geoLocation=${encodeURIComponent(country)}${usePaintings ? '&medium=Paintings' : ''}`;
       const resp = await fetchWithRetry(searchUrl);
       if (!resp.ok) continue;
       const data = await resp.json();
@@ -128,9 +149,7 @@ async function main() {
     [allIds[i], allIds[j]] = [allIds[j], allIds[i]];
   }
 
-  const centroidJsonPath = path.resolve(process.cwd(), 'src/data/country-centroids.json');
-  const centroidJson = JSON.parse(await fs.promises.readFile(centroidJsonPath, 'utf8'));
-  const validCountries = new Set(Object.keys(centroidJson));
+  // centroidJson/validCountries already loaded above
 
   const results = [];
   const perCountryCount = new Map();
