@@ -92,7 +92,11 @@ async function main() {
 
   // If file missing or unparsable, fall back to 500 base
   const baseTarget = currentCount > 0 ? currentCount : 500;
-  const desiredCount = baseTarget * 2;
+  // Allow CLI arg or env to override, but ensure at least 5000 as requested
+  const cliTarget = Number.parseInt(process.argv[2] || '') || 0;
+  const envTarget = Number.parseInt(process.env.MET_FALLBACK_TARGET || '') || 0;
+  const MIN_TARGET = 5000;
+  const desiredCount = Math.max(MIN_TARGET, baseTarget * 2, cliTarget, envTarget);
   const maxIdsPerQuery = 5000;
 
   const idSet = new Set();
@@ -102,46 +106,72 @@ async function main() {
   const centroidJson = JSON.parse(await fs.promises.readFile(centroidJsonPath, 'utf8'));
   const validCountries = new Set(Object.keys(centroidJson));
 
-  // 1) Broad base queries
-  for (const q of baseQueries) {
-    try {
-      const usePaintings = Math.random() < 0.20;
-      const searchUrl = `${MET_API_BASE}/search?hasImages=true&q=${encodeURIComponent(q)}${usePaintings ? '&medium=Paintings' : ''}`;
-      const resp = await fetchWithRetry(searchUrl);
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      const ids = data.objectIDs || [];
-      for (const id of ids) {
-        idSet.add(id);
-        if (idSet.size >= desiredCount * 8) break;
+  async function collectIds(targetSize) {
+    const target = Math.max(targetSize, desiredCount * 12);
+
+    // 1) Broad base queries
+    for (const q of baseQueries) {
+      try {
+        const usePaintings = Math.random() < 0.20;
+        const searchUrl = `${MET_API_BASE}/search?hasImages=true&q=${encodeURIComponent(q)}${usePaintings ? '&medium=Paintings' : ''}`;
+        const resp = await fetchWithRetry(searchUrl);
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        const ids = data.objectIDs || [];
+        for (const id of ids) {
+          idSet.add(id);
+          if (idSet.size >= target) break;
+        }
+        if (idSet.size >= target) break;
+      } catch {}
+    }
+
+    if (idSet.size < target) {
+      // 2) GeoLocation-focused searches to ensure country coverage
+      const geoCountries = Array.from(validCountries);
+      for (let i = geoCountries.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [geoCountries[i], geoCountries[j]] = [geoCountries[j], geoCountries[i]];
       }
-      if (idSet.size >= desiredCount * 8) break;
-    } catch {}
+      for (const country of geoCountries) {
+        try {
+          const usePaintings = Math.random() < 0.20;
+          const searchUrl = `${MET_API_BASE}/search?hasImages=true&q=a&geoLocation=${encodeURIComponent(country)}${usePaintings ? '&medium=Paintings' : ''}`;
+          const resp = await fetchWithRetry(searchUrl);
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          const ids = data.objectIDs || [];
+          for (const id of ids) {
+            idSet.add(id);
+            if (idSet.size >= target) break;
+          }
+          if (idSet.size >= target) break;
+        } catch {}
+      }
+    }
+
+    if (idSet.size < target) {
+      // 3) Alphabet tokens to broaden further
+      const alpha = 'abcdefghijklmnopqrstuvwxyz'.split('');
+      for (const ch of alpha) {
+        try {
+          const usePaintings = Math.random() < 0.20;
+          const searchUrl = `${MET_API_BASE}/search?hasImages=true&q=${ch}${usePaintings ? '&medium=Paintings' : ''}`;
+          const resp = await fetchWithRetry(searchUrl);
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          const ids = data.objectIDs || [];
+          for (const id of ids) {
+            idSet.add(id);
+            if (idSet.size >= target) break;
+          }
+          if (idSet.size >= target) break;
+        } catch {}
+      }
+    }
   }
 
-  // 2) GeoLocation-focused searches to ensure country coverage
-  const geoCountries = Array.from(validCountries);
-  // Shuffle to avoid bias
-  for (let i = geoCountries.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [geoCountries[i], geoCountries[j]] = [geoCountries[j], geoCountries[i]];
-  }
-  for (const country of geoCountries) {
-    try {
-      const usePaintings = Math.random() < 0.20;
-      // q is required; use a broad token 'a' to maximize results
-      const searchUrl = `${MET_API_BASE}/search?hasImages=true&q=a&geoLocation=${encodeURIComponent(country)}${usePaintings ? '&medium=Paintings' : ''}`;
-      const resp = await fetchWithRetry(searchUrl);
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      const ids = data.objectIDs || [];
-      for (const id of ids) {
-        idSet.add(id);
-        if (idSet.size >= desiredCount * 8) break;
-      }
-      if (idSet.size >= desiredCount * 8) break;
-    } catch {}
-  }
+  await collectIds(desiredCount * 12);
 
   const allIds = Array.from(idSet);
   for (let i = allIds.length - 1; i > 0; i--) {
@@ -188,13 +218,25 @@ async function main() {
     } catch {}
   }
 
-  // Dispatch many requests concurrently to utilize the rate limiter fully
-  const tasks = [];
-  for (const id of allIds) {
-    if (results.length >= desiredCount) break;
-    tasks.push(processId(id));
+  // Process in batches to avoid scheduling excessive work beyond desiredCount
+  const batchSize = 800;
+  let index = 0;
+  while (results.length < desiredCount && index < allIds.length) {
+    const batch = allIds.slice(index, index + batchSize);
+    index += batch.length;
+    await Promise.allSettled(batch.map(id => processId(id)));
+    // If we ran out of IDs and still haven't met desiredCount, collect more
+    if (results.length < desiredCount && index >= allIds.length) {
+      await collectIds(desiredCount * 16);
+      const moreIds = Array.from(idSet);
+      for (let i = moreIds.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [moreIds[i], moreIds[j]] = [moreIds[j], moreIds[i]];
+      }
+      allIds.length = 0;
+      allIds.push(...moreIds);
+    }
   }
-  await Promise.allSettled(tasks);
 
   // Build file content
   const header = `import { getCountryCentroid } from '@/lib/location';\nimport type { GameObject } from '@/lib/met';\n\n// Auto-generated by scripts/generate-met-fallback.mjs\nexport const MET_FALLBACK_GAME_OBJECTS: GameObject[] = [\n`;
