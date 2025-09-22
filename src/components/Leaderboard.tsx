@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 interface LeaderboardEntry {
   name: string;
@@ -9,29 +9,42 @@ interface LeaderboardEntry {
 
 interface LeaderboardProps {
   onClose: () => void;
+  refreshTrigger?: number; // Add a trigger prop to refresh when it changes
 }
 
-export default function Leaderboard({ onClose }: LeaderboardProps) {
+export default function Leaderboard({ onClose, refreshTrigger }: LeaderboardProps) {
   const [scores, setScores] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   
-  useEffect(() => {
-    fetchLeaderboard();
-  }, []);
-  
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = useCallback(async (retryCount = 0) => {
     try {
       const response = await fetch('/api/leaderboard');
       if (response.ok) {
         const data = await response.json();
         setScores(data.scores || []);
+        // If this was a retry and we got empty scores, try once more after a brief delay
+        if (retryCount < 1 && (refreshTrigger || 0) > 0 && (data.scores || []).length === 0) {
+          setLoading(true);
+          setTimeout(() => fetchLeaderboard(retryCount + 1), 300);
+          return;
+        }
       }
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
+      // Retry once on error
+      if (retryCount < 1) {
+        setLoading(true);
+        setTimeout(() => fetchLeaderboard(retryCount + 1), 300);
+        return;
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [refreshTrigger]);
+  
+  useEffect(() => {
+    fetchLeaderboard();
+  }, [refreshTrigger, fetchLeaderboard]); // Refresh when refreshTrigger changes
   
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">

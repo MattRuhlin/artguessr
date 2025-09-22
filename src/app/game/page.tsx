@@ -36,6 +36,7 @@ export default function GamePage() {
   const [totalScore, setTotalScore] = useState(0);
   const [gameComplete, setGameComplete] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [leaderboardRefreshTrigger, setLeaderboardRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -129,7 +130,11 @@ export default function GamePage() {
       });
       
       if (response.ok) {
-        setShowLeaderboard(true);
+        // Wait a bit for Redis to sync, then trigger leaderboard refresh and show the modal
+        setTimeout(() => {
+          setLeaderboardRefreshTrigger(prev => prev + 1);
+          setShowLeaderboard(true);
+        }, 500);
       } else {
         const errorData = await response.json();
         console.error('Leaderboard submission failed:', errorData);
@@ -212,7 +217,10 @@ export default function GamePage() {
         </div>
         
         {showLeaderboard && (
-          <Leaderboard onClose={() => setShowLeaderboard(false)} />
+          <Leaderboard 
+            onClose={() => setShowLeaderboard(false)} 
+            refreshTrigger={leaderboardRefreshTrigger}
+          />
         )}
       </div>
     );

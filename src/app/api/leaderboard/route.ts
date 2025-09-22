@@ -9,23 +9,45 @@ const redis = new Redis({
 export async function GET() {
   try {
     // Get top 10 scores from Redis sorted set (highest first)
-    const scores = (await redis.zrange('leaderboard', 0, 9, { withScores: true, rev: true })) as Array<
-      [string, number] | { member: string; score: number }
-    >;
+    const scores = await redis.zrange('leaderboard', 0, 9, { withScores: true, rev: true });
 
     console.log('Raw scores from Redis:', scores);
+    console.log('Raw scores type:', typeof scores, 'is Array:', Array.isArray(scores));
     
-    const leaderboard = scores.map((item: [string, number] | { member: string; score: number }) => {
-      if (Array.isArray(item)) {
-        const [name, score] = item;
+    let leaderboard: Array<{ name: string; score: number }> = [];
+    
+    if (Array.isArray(scores)) {
+      // Handle different return formats from Redis
+      if (scores.length > 0 && Array.isArray(scores[0])) {
+        // Format: [['name1', score1], ['name2', score2], ...]
+        leaderboard = scores.map((item: unknown) => {
+          const [name, score] = item as [string, number];
+          const processed = { name: String(name || ''), score: Number(score) };
+          console.log('Processing array item:', item, '->', processed);
+          return processed;
+        }).filter(entry => entry.name && !isNaN(entry.score));
+      } else if (typeof scores[0] === 'string' && scores.length === 2) {
+        // Format: ['name', score] for single entry
+        const [name, score] = scores;
         const processed = { name: String(name || ''), score: Number(score) };
-        console.log('Processing array item:', item, '->', processed);
-        return processed;
+        console.log('Processing single entry:', scores, '->', processed);
+        if (processed.name && !isNaN(processed.score)) {
+          leaderboard = [processed];
+        }
+      } else {
+        // Try to process alternated format: ['name1', score1, 'name2', score2, ...]
+        leaderboard = [];
+        for (let i = 0; i < scores.length; i += 2) {
+          if (typeof scores[i] === 'string' && typeof scores[i + 1] === 'number') {
+            const processed = { name: String(scores[i]), score: Number(scores[i + 1]) };
+            console.log('Processing alternated item:', [scores[i], scores[i + 1]], '->', processed);
+            if (processed.name && !isNaN(processed.score)) {
+              leaderboard.push(processed);
+            }
+          }
+        }
       }
-      const processed = { name: String(item.member || ''), score: Number(item.score) };
-      console.log('Processing object item:', item, '->', processed);
-      return processed;
-    }).filter(entry => entry.name && !isNaN(entry.score));
+    }
     
     console.log('Final leaderboard:', leaderboard);
     return NextResponse.json({ scores: leaderboard });
